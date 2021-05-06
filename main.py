@@ -11,7 +11,6 @@ from forms import LoginForm, RegisterForm, CreatePostForm, CommentForm
 from flask_gravatar import Gravatar
 import os
 
-'8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY")
 ckeditor = CKEditor(app)
@@ -78,57 +77,60 @@ def admin_only(f):
 @app.route('/')
 def get_all_posts():
     posts = BlogPost.query.all()
-    return render_template("index.html", all_posts=posts, current_user=current_user)
+    return render_template("index.html", all_posts=posts, logged_in=current_user.is_authenticated)
 
 
 @app.route('/register', methods=["GET", "POST"])
 def register():
-    form = RegisterForm()
-    if form.validate_on_submit():
-
-        if User.query.filter_by(email=form.email.data).first():
-            print(User.query.filter_by(email=form.email.data).first())
-            #User already exists
+    register_form = RegisterForm()
+    if register_form.validate_on_submit():
+        # check existed account
+        if User.query.filter_by(email=register_form.email.data).first():
+            # User already exists
             flash("You've already signed up with that email, log in instead!")
-            return redirect(url_for('login'))
-
+            return redirect(url_for('login', logged_in=False))
+        # hash password
         hash_and_salted_password = generate_password_hash(
-            form.password.data,
+            register_form.password.data,
             method='pbkdf2:sha256',
             salt_length=8
         )
+        # add new account to database
         new_user = User(
-            email=form.email.data,
-            name=form.name.data,
+            email=register_form.email.data,
             password=hash_and_salted_password,
+            name=register_form.name.data
         )
         db.session.add(new_user)
         db.session.commit()
+        # Log in and authenticate user after adding details to database.
         login_user(new_user)
-        return redirect(url_for("get_all_posts"))
-
-    return render_template("register.html", form=form, current_user=current_user)
+        return redirect(url_for('get_all_posts'))
+    return render_template("register.html", logged_in=current_user.is_authenticated, form=register_form)
 
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
-    form = LoginForm()
-    if form.validate_on_submit():
-        email = form.email.data
-        password = form.password.data
-
+    login_form = LoginForm()
+    if login_form.validate_on_submit():
+        email = login_form.email.data
+        password = login_form.password.data
         user = User.query.filter_by(email=email).first()
-        # Email doesn't exist or password incorrect.
+        # Email doesn't exist
         if not user:
             flash("That email does not exist, please try again.")
             return redirect(url_for('login'))
+        # Password incorrect
         elif not check_password_hash(user.password, password):
             flash('Password incorrect, please try again.')
             return redirect(url_for('login'))
+        # Email exists and password correct
         else:
             login_user(user)
             return redirect(url_for('get_all_posts'))
-    return render_template("login.html", form=form, current_user=current_user)
+
+    return render_template("login.html", form=login_form, current_user=current_user,
+                           logged_in=current_user.is_authenticated)
 
 
 @app.route('/logout')
@@ -148,24 +150,24 @@ def show_post(post_id):
             return redirect(url_for("login"))
 
         new_comment = Comment(
-            text=form.comment_text.data,
+            text=form.body.data,
             comment_author=current_user,
             parent_post=requested_post
         )
         db.session.add(new_comment)
         db.session.commit()
 
-    return render_template("post.html", post=requested_post, form=form, current_user=current_user)
+    return render_template("post.html", post=requested_post, form=form, current_user=current_user, logged_in=current_user.is_authenticated)
 
 
 @app.route("/about")
 def about():
-    return render_template("about.html", current_user=current_user)
+    return render_template("about.html", logged_in=current_user.is_authenticated)
 
 
 @app.route("/contact")
 def contact():
-    return render_template("contact.html", current_user=current_user)
+    return render_template("contact.html", logged_in=current_user.is_authenticated)
 
 
 @app.route("/new-post", methods=["GET", "POST"])
@@ -184,10 +186,7 @@ def add_new_post():
         db.session.add(new_post)
         db.session.commit()
         return redirect(url_for("get_all_posts"))
-
-    return render_template("make-post.html", form=form, current_user=current_user)
-
-
+    return render_template("make-post.html", form=form, logged_in=current_user.is_authenticated)
 
 
 @app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
@@ -198,18 +197,20 @@ def edit_post(post_id):
         title=post.title,
         subtitle=post.subtitle,
         img_url=post.img_url,
-        author=current_user,
+        author=post.author,
         body=post.body
     )
     if edit_form.validate_on_submit():
         post.title = edit_form.title.data
         post.subtitle = edit_form.subtitle.data
         post.img_url = edit_form.img_url.data
+        post.author = edit_form.author.data
         post.body = edit_form.body.data
         db.session.commit()
         return redirect(url_for("show_post", post_id=post.id))
 
-    return render_template("make-post.html", form=edit_form, is_edit=True, current_user=current_user)
+    return render_template("make-post.html", form=edit_form, is_edit=True, current_user=current_user,
+                           logged_in=current_user.is_authenticated)
 
 
 @app.route("/delete/<int:post_id>")
@@ -221,6 +222,13 @@ def delete_post(post_id):
     return redirect(url_for('get_all_posts'))
 
 
+@app.route("/delete_comment/<int:comment_id>")
+def delete_comment(comment_id):
+    comment_to_delete = Comment.query.get(comment_id)
+    db.session.delete(comment_to_delete)
+    db.session.commit()
+    return redirect(url_for('show_post', post_id=request.args.get("post_id")))
+
+
 if __name__ == "__main__":
-    # app.run(host='0.0.0.0', port=5000)
     app.run(debug=True)
