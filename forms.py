@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, PasswordField
-from wtforms.validators import DataRequired, URL
+from wtforms.validators import DataRequired, URL, ValidationError
 from flask_ckeditor import CKEditorField
 
 
@@ -13,19 +13,27 @@ class CreatePostForm(FlaskForm):
     submit = SubmitField("Submit Post")
 
 
+# register form
+def my_email_check(form, field):
+    if "@" not in field.data or "." not in field.data:
+        raise ValidationError('Invalid email address')
+
+
 class RegisterForm(FlaskForm):
-    email = StringField("Email", validators=[DataRequired()])
+    email = StringField("Email", validators=[DataRequired(), my_email_check])
     password = PasswordField("Password", validators=[DataRequired()])
     name = StringField("Name", validators=[DataRequired()])
     submit = SubmitField("Sign Me Up!")
 
 
 class LoginForm(FlaskForm):
-    email = StringField("Email", validators=[DataRequired()])
+    email = StringField("Email", validators=[DataRequired(), my_email_check])
     password = PasswordField("Password", validators=[DataRequired()])
-    submit = SubmitField("Let Me In!")
+    submit = SubmitField("Sign Me In!")
 
 
 class CommentForm(FlaskForm):
-    comment_text = CKEditorField("Comment", validators=[DataRequired()])
-    submit = SubmitField("Submit Comment")
+    body = CKEditorField("Blog Content", validators=[DataRequired()])
+    submit = SubmitField("Comment!")
+
+
